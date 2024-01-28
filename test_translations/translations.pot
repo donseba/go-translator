@@ -1,0 +1,28 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: translator\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+
+msgid "First translation text"
+msgstr ""
+
+msgid "Second translation text"
+msgstr ""
+
+msgid "Third translation text"
+msgstr ""
+
+msgid "Non-existent text"
+msgstr ""
+
+msgid "There is one apple"
+msgid_plural "There are many apples"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "I see one cat"
+msgid_plural "I see many cats"
+msgstr[0] ""
+msgstr[1] ""
