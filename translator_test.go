@@ -185,6 +185,20 @@ func TestTnFunctionMultiplural(t *testing.T) {
 	}
 }
 
+func TestCheckMissingTranslations(t *testing.T) {
+	translator := NewTranslator(translationsDir, templateDir)
+	err := translator.AddLanguage(lang)
+	if err != nil {
+		t.Errorf("AddLanguage() error = %v", err)
+	}
+
+	// Test with missing translations
+	err = translator.CheckMissingTranslations()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 // mockLocalizer is a mock implementation of the Localizer interface for testing
 type mockLocalizer struct {
 	locale string

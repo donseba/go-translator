@@ -4,7 +4,6 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Language: en\n"
 
-
 msgid "First translation text"
 msgstr ""
 
@@ -24,5 +23,14 @@ msgstr[1] ""
 
 msgid "I see one cat"
 msgid_plural "I see many cats"
+msgstr[0] ""
+msgstr[1] ""
+
+msgctxt "context"
+msgid "Context text"
+msgstr ""
+
+msgid "First translation text"
+msgid_plural "First translation text plural"
 msgstr[0] ""
 msgstr[1] ""
