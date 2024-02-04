@@ -299,11 +299,9 @@ func (t *Translator) addToPotFileIfNotExists(key translationKey) error {
 		if key.value == potKey.ID {
 			return nil
 		}
-
-		return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
 	}
 
-	return nil
+	return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
 }
 
 func (t *Translator) FuncMap() template.FuncMap {
