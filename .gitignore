@@ -19,3 +19,5 @@
 
 # Go workspace file
 go.work
+/test_translations/en_TL.po
+/test_translations/en_TN.po
