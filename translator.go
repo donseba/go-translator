@@ -279,7 +279,6 @@ func (t *Translator) addToPotFileIfNotExists(key translationKey) error {
 	tr := t.pot.GetDomain().GetTranslations()
 
 	if key.ctx == "" {
-
 		for _, potKey := range tr {
 			if key.value == potKey.ID {
 				return nil
@@ -290,18 +289,19 @@ func (t *Translator) addToPotFileIfNotExists(key translationKey) error {
 	}
 
 	ctr := t.pot.GetDomain().GetCtxTranslations()
-
 	if ctr[key.ctx] == nil {
 		return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
 	}
 
-	for _, potKey := range ctr[key.ctx] {
-		if key.value == potKey.ID {
+	for potKey, _ := range ctr[key.ctx] {
+		if key.value == potKey {
 			return nil
 		}
+
+		return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
 	}
 
-	return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
+	return nil
 }
 
 func (t *Translator) FuncMap() template.FuncMap {
