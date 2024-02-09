@@ -34,6 +34,10 @@ func (t *Translator) ctl(loc Localizer, ctx, key string, args ...interface{}) st
 		return fmt.Sprintf(DefaultNoTranslationCTL, ctx, key)
 	}
 
+	if ctx == "" {
+		return t.tl(loc, key, args...)
+	}
+
 	if !translator.IsTranslatedC(key, ctx) {
 		if t.uniqueKeysCtx[ctx] == nil {
 			t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
