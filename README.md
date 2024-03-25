@@ -9,6 +9,7 @@ Features
 - **Dynamic Language Support**: Add new languages by parsing PO files.
 - **Template Integration**: Works with Go HTML templates, extracting translation keys directly from them.
 - **Pluralization Support**: Handles singular and plural forms for languages with complex plural rules.
+- **Contextual Translations**: Supports context-based translations for more accurate localization.
 - **Prefix Handling**: Customizable prefix handling in translation keys, allowing for organized and readable translation files.
 - **Missing Translation Detection**: Scans for and logs missing translations, simplifying the translation management process.
 
@@ -47,6 +48,7 @@ func main() {
     }   
 	
     // add template functions
+    // this will add the tl, tn, ctl and ctn functions to the template
     var yourTemplateFunctions = make(template.FuncMap) 
     for k, v := range tr.FuncMap() {
         yourTemplateFunctions[k] = v
@@ -55,14 +57,14 @@ func main() {
 
 Using the Translator in Templates
 --
-Use tl for translating singular texts and tn for plural forms.
+Use tl and ctl for translating singular texts and tn and ctn for plural forms.
 
 ```html
 <!-- Singular -->
 <p>{{ tl "Hello, World!" }}</p>
 
 <!-- Plural -->
-<p>{{ tn "You have one message." "You have multiple messages." 5 }}</p>
+<p>{{ tn "You have one message." "You have %d messages." 5, 5 }}</p>
 ```
 Adding a New Language
 --
@@ -101,7 +103,7 @@ translatedText := tr.Tl(localizer, "prefix__.your_translation_key") // output yo
 TODO
 --
 - add caching functionality of the loaded translated keys.
-- add unit tests
+- add more unit tests
 - live reload translations when the file changes
 - fallback language
 
