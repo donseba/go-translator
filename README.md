@@ -61,11 +61,27 @@ Use tl and ctl for translating singular texts and tn and ctn for plural forms.
 
 ```html
 <!-- Singular -->
-<p>{{ tl "Hello, World!" }}</p>
+<p>{{ tl .Loc "Hello, World!" }}</p>
 
 <!-- Plural -->
-<p>{{ tn "You have one message." "You have %d messages." 5, 5 }}</p>
+<p>{{ tn .Loc "You have one message." "You have %d messages." 5, 5 }}</p>
 ```
+
+Localizer interface
+--
+
+The Localizer interface is used to provide the translator with the current language. 
+It is used to determine the correct translation for the given key.
+
+```go
+	//Localizer interface contains the methods that are needed for the translator
+Localizer interface {
+   // GetLocale returns the locale of the localizer, ie. "en_US"
+   GetLocale() string
+}
+``` 
+
+
 Adding a New Language
 --
 ```go
