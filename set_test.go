@@ -2,7 +2,6 @@ package translator
 
 import (
 	"fmt"
-	"github.com/donseba/gotext"
 	"testing"
 )
 
@@ -15,7 +14,6 @@ func TestTranslator_SetTL(t *testing.T) {
 	type fields struct {
 		translationsDir string
 		templateDir     string
-		languages       map[string]*gotext.Po
 		uniqueKeys      map[string]uniqueKey
 		uniqueKeysCtx   map[string]map[string]uniqueKey
 	}
@@ -114,7 +112,7 @@ func TestTranslator_SetTL(t *testing.T) {
 				}
 			}
 
-			tls := tr.languages[tt.lang].GetTranslations()
+			tls := tr.languages[tt.lang].GetDomain().GetTranslations()
 			for _, tl := range tls {
 				fmt.Printf("%+v\n", tl)
 			}

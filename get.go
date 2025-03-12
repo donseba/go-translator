@@ -5,7 +5,7 @@ import (
 )
 
 // Tl translates a string based on the given language tag and key.
-func (t *Translator) tl(loc Localizer, key string, args ...interface{}) string {
+func (t *Translator) tl(loc Localizer, key string, args ...any) string {
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationTL, key)
@@ -24,11 +24,11 @@ func (t *Translator) tl(loc Localizer, key string, args ...interface{}) string {
 		return fmt.Sprintf(DefaultNoTranslationTL, key)
 	}
 
-	translated := translator.Get(key, args...)
+	translated := translator.Get(fmt.Sprintf("%s", key), args...) //nolint:gosimple
 	return t.removePrefix(translated)
 }
 
-func (t *Translator) ctl(loc Localizer, ctx, key string, args ...interface{}) string {
+func (t *Translator) ctl(loc Localizer, ctx, key string, args ...any) string {
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationCTL, ctx, key)
@@ -55,7 +55,7 @@ func (t *Translator) ctl(loc Localizer, ctx, key string, args ...interface{}) st
 		return fmt.Sprintf(DefaultNoTranslationCTL, ctx, key)
 	}
 
-	translated := translator.GetC(key, ctx, args...)
+	translated := translator.GetC(fmt.Sprintf("%s", key), ctx, args...) //nolint:gosimple
 	return t.removePrefix(translated)
 }
 
@@ -111,7 +111,7 @@ func (t *Translator) ctn(loc Localizer, ctx, singular, plural string, n int, arg
 }
 
 // Tl translates a string based on the given language tag and key.
-func (t *Translator) Tl(loc Localizer, key string, args ...interface{}) string {
+func (t *Translator) Tl(loc Localizer, key string, args ...any) string {
 	return t.tl(loc, key, args...)
 }
 
@@ -121,7 +121,7 @@ func (t *Translator) Tn(loc Localizer, singular, plural string, n int) string {
 }
 
 // Ctl method for handling string translation with context
-func (t *Translator) Ctl(loc Localizer, ctx, key string, args ...interface{}) string {
+func (t *Translator) Ctl(loc Localizer, ctx, key string, args ...any) string {
 	return t.ctl(loc, ctx, key, args...)
 }
 
