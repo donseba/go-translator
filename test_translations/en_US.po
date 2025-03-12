@@ -26,3 +26,12 @@ msgid "There is one apple"
 msgid_plural "There are many apples"
 msgstr[0] "There is one apple"
 msgstr[1] "There are many apples"
+
+msgid "First translation text with %s"
+msgstr "First translation text with %s"
+
+msgid "Second translation text with %s"
+msgstr "Second translation text with %s"
+
+msgid "Third translation text with %s"
+msgstr "Third translation text with %s"

@@ -3,13 +3,14 @@ package translator
 import (
 	"bufio"
 	"fmt"
-	"github.com/donseba/gotext"
 	"html/template"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/leonelquinteros/gotext"
 )
 
 var (
@@ -133,8 +134,8 @@ func (t *Translator) CheckMissingTranslations() error {
 	}
 
 	var (
-		tr  = t.pot.GetTranslations()
-		ctr = t.pot.GetCtxTranslations()
+		tr  = t.pot.GetDomain().GetTranslations()
+		ctr = t.pot.GetDomain().GetCtxTranslations()
 	)
 
 	for key, entry := range t.uniqueKeys {

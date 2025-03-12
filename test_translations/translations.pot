@@ -34,3 +34,43 @@ msgid "First translation text"
 msgid_plural "First translation text plural"
 msgstr[0] ""
 msgstr[1] ""
+
+msgid "Testing TN translation with amount"
+msgid_plural "Testing TN translations with amount"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Testing TN translation"
+msgid_plural "Testing TN translations"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Testing TN translation with amount and vars"
+msgid_plural "Testing %s translations with amount and vars"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Testing TL translation"
+msgstr ""
+
+msgctxt "in context"
+msgid "Testing CTL translation"
+msgstr ""
+
+msgctxt "in context"
+msgid "Testing CTN translation"
+msgid_plural "Testing CTN translations"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "First translation text with %s"
+msgstr ""
+
+msgid "Second translation text with %s"
+msgstr ""
+
+msgid "Third translation text with %s"
+msgstr ""
+
+msgid "Non-existent text with %s"
+msgstr ""

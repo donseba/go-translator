@@ -2,10 +2,11 @@ package translator
 
 import (
 	"fmt"
-	"github.com/donseba/gotext"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/leonelquinteros/gotext"
 )
 
 func (t *Translator) SetTL(loc Localizer, key string, value string) error {

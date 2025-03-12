@@ -1,6 +1,8 @@
 package translator
 
-import "testing"
+import (
+	"testing"
+)
 
 var (
 	translationsDir = "test_translations"
@@ -97,6 +99,34 @@ func TestTlFunction(t *testing.T) {
 	}
 }
 
+func TestTlFunctionWithArgs(t *testing.T) {
+	translator := NewTranslator(translationsDir, templateDir)
+	err := translator.AddLanguage(lang)
+	if err != nil {
+		t.Errorf("AddLanguage() error = %v", err)
+	}
+
+	loc := mockLocalizer{locale: lang}
+
+	tests := []struct {
+		key      string
+		expected string
+		args     []any
+	}{
+		{"First translation text with %s", "First translation text with args", []any{"args"}},
+		{"Second translation text with %s", "Second translation text with args", []any{"args"}},
+		{"Third translation text with %s", "Third translation text with args", []any{"args"}},
+		{"Non-existent text with %s", "*Non-existent text with %s*", []any{"args"}}, // Assuming the behavior for non-translated text
+	}
+
+	for _, tt := range tests {
+		result := translator.tl(loc, tt.key, tt.args...)
+		if result != tt.expected {
+			t.Errorf("tl() for key '%s' = %s, want %s", tt.key, result, tt.expected)
+		}
+	}
+}
+
 func TestTlFunctionNL(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
 	err := translator.AddLanguage(langNL)
@@ -152,7 +182,7 @@ func TestTnFunction(t *testing.T) {
 	}
 }
 
-func TestTnFunctionMultiplural(t *testing.T) {
+func TestTnFunctionMultiPlural(t *testing.T) {
 	translator := NewTranslator("test_translations", "")
 	err := translator.AddLanguage(multiplural)
 	if err != nil {
@@ -166,12 +196,12 @@ func TestTnFunctionMultiplural(t *testing.T) {
 		plural   string
 		count    int
 		expected string
-		vars     []interface{}
+		vars     []any
 	}{
 		{"There is one apple", "There are many apples", 1, "C'è una mela", nil},
 		{"There is one apple", "There are many apples", 2, "Ci sono due mele", nil},
-		{"There is one apple", "There are %d apples", 0, "Ci sono 0 mele", []interface{}{0}},
-		{"There is one apple", "There are %d apples", 5, "Ci sono 5 mele", []interface{}{5}},
+		{"There is one apple", "There are %d apples", 0, "Ci sono 0 mele", []any{0}},
+		{"There is one apple", "There are %d apples", 5, "Ci sono 5 mele", []any{5}},
 		// Add more test cases as needed
 	}
 
