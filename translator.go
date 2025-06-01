@@ -126,6 +126,24 @@ func (t *Translator) AddLanguage(lang string) error {
 	return nil
 }
 
+func (t *Translator) EnsureLanguage(lang string) error {
+	poPath := filepath.Join(t.translationsDir, lang+DefaultPoExtension)
+	if _, err := os.Stat(poPath); os.IsNotExist(err) {
+		h := GetHeaderForLanguage(lang)
+		f, err := os.Create(poPath)
+		if err != nil {
+			return fmt.Errorf("failed to create new language file: %w", err)
+		}
+		defer f.Close()
+		_, err = f.WriteString(h.HeaderString())
+		if err != nil {
+			return fmt.Errorf("failed to write header to new language file: %w", err)
+		}
+	}
+
+	return t.AddLanguage(lang)
+}
+
 // CheckMissingTranslations scans template files for missing translations and logs them.
 func (t *Translator) CheckMissingTranslations() error {
 	err := t.ScanFiles(t.templateDir)
