@@ -2,6 +2,9 @@ package translator
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -112,10 +115,10 @@ func TestTranslator_SetTL(t *testing.T) {
 				}
 			}
 
-			tls := tr.languages[tt.lang].GetDomain().GetTranslations()
-			for _, tl := range tls {
-				fmt.Printf("%+v\n", tl)
-			}
+			//tls := tr.languages[tt.lang].GetDomain().GetTranslations()
+			//for _, tl := range tls {
+			//	fmt.Printf("%+v\n", tl)
+			//}
 
 			err = tr.Write(tt.loc)
 			if err != nil {
@@ -124,6 +127,115 @@ func TestTranslator_SetTL(t *testing.T) {
 		})
 	}
 
+}
+
+func TestGeneratedPluralForms(t *testing.T) {
+	cases := []struct {
+		lang   string
+		expect string
+	}{
+		{"en", "nplurals=2; plural=(n != 1);"},
+		{"ar", "nplurals=6; plural=(n == 0 ? 0 : n == 1 ? 1 : n == 2 ? 2 : n % 100 >= 3 && n % 100 <= 10 ? 3 : n % 100 >= 11 && n % 100 <= 99 ? 4 : 5);"},
+		{"ru", "nplurals=3; plural=(n % 10 == 1 && n % 100 != 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 1 : 2);"},
+	}
+	for _, c := range cases {
+		h, ok := LanguageHeaderTemplates[c.lang]
+		if !ok {
+			t.Errorf("Language %s not found in LanguageHeaderTemplates", c.lang)
+			continue
+		}
+		if h.PluralForms != c.expect {
+			t.Errorf("PluralForms for %s: got %q, want %q", c.lang, h.PluralForms, c.expect)
+		}
+	}
+}
+
+func TestEnsureLanguage(t *testing.T) {
+	tempDir := t.TempDir()
+	tr := NewTranslator(tempDir, "")
+	lang := "fr"
+	poPath := filepath.Join(tempDir, lang+DefaultPoExtension)
+
+	// Ensure file does not exist
+	if _, err := os.Stat(poPath); err == nil {
+		os.Remove(poPath)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Remove(poPath); err != nil && !os.IsNotExist(err) {
+			t.Errorf("Failed to clean up PO file: %v", err)
+		}
+	})
+
+	err := tr.EnsureLanguage(lang)
+	if err != nil {
+		t.Fatalf("EnsureLanguage failed: %v", err)
+	}
+
+	// Check file was created
+	if _, err := os.Stat(poPath); err != nil {
+		t.Errorf("PO file was not created: %v", err)
+	}
+
+	// Check language is loaded
+	if _, ok := tr.languages[lang]; !ok {
+		t.Errorf("Language %s not loaded in translator", lang)
+	}
+}
+
+func TestEnsureLanguage_Idempotent(t *testing.T) {
+	tempDir := t.TempDir()
+	tr := NewTranslator(tempDir, "")
+	lang := "fr"
+	poPath := filepath.Join(tempDir, lang+DefaultPoExtension)
+
+	// Ensure file does not exist
+	if _, err := os.Stat(poPath); err == nil {
+		os.Remove(poPath)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Remove(poPath); err != nil && !os.IsNotExist(err) {
+			t.Errorf("Failed to clean up PO file: %v", err)
+		}
+	})
+
+	// First call should create the file
+	err := tr.EnsureLanguage(lang)
+	if err != nil {
+		t.Fatalf("First EnsureLanguage failed: %v", err)
+	}
+
+	// Write a marker to the file
+	marker := "# marker line\n"
+	f, err := os.OpenFile(poPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open PO file for appending: %v", err)
+	}
+	_, err = f.WriteString(marker)
+	f.Close()
+	if err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Second call should NOT overwrite the file
+	err = tr.EnsureLanguage(lang)
+	if err != nil {
+		t.Fatalf("Second EnsureLanguage failed: %v", err)
+	}
+
+	// Check that marker is still present
+	data, err := os.ReadFile(poPath)
+	if err != nil {
+		t.Fatalf("Failed to read PO file: %v", err)
+	}
+	if !contains(string(data), marker) {
+		t.Errorf("Marker line was overwritten by EnsureLanguage: %s", string(data))
+	}
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 func NewLocalizer(s string) Localizer {

@@ -48,35 +48,35 @@ func TestSetAndGetPrefixSeparator(t *testing.T) {
 	}
 }
 
-func TestAddLanguage(t *testing.T) {
+func TestSetLanguage(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
 
-	err := translator.AddLanguage(lang)
+	err := translator.SetLanguage(lang)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	if _, exists := translator.languages[lang]; !exists {
-		t.Errorf("AddLanguage() language %v not added", lang)
+		t.Errorf("SetLanguage() language %v not added", lang)
 	}
 
 	// Test with non-existent language file
 	nonExistentLang := "non_existent"
-	err = translator.AddLanguage(nonExistentLang)
+	err = translator.SetLanguage(nonExistentLang)
 	if err == nil {
-		t.Errorf("AddLanguage() should return error for non-existent language %v", nonExistentLang)
+		t.Errorf("SetLanguage() should return error for non-existent language %v", nonExistentLang)
 	}
 
 	if _, exists := translator.languages[nonExistentLang]; exists {
-		t.Errorf("AddLanguage() should not add non-existent language %v", nonExistentLang)
+		t.Errorf("SetLanguage() should not add non-existent language %v", nonExistentLang)
 	}
 }
 
 func TestTlFunction(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
-	err := translator.AddLanguage(lang)
+	err := translator.SetLanguage(lang)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	loc := mockLocalizer{locale: lang} // Assume mockLocalizer implements Localizer interface
@@ -101,9 +101,9 @@ func TestTlFunction(t *testing.T) {
 
 func TestTlFunctionWithArgs(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
-	err := translator.AddLanguage(lang)
+	err := translator.SetLanguage(lang)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	loc := mockLocalizer{locale: lang}
@@ -129,9 +129,9 @@ func TestTlFunctionWithArgs(t *testing.T) {
 
 func TestTlFunctionNL(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
-	err := translator.AddLanguage(langNL)
+	err := translator.SetLanguage(langNL)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	loc := mockLocalizer{locale: langNL} // Assume mockLocalizer implements Localizer interface
@@ -156,9 +156,9 @@ func TestTlFunctionNL(t *testing.T) {
 
 func TestTnFunction(t *testing.T) {
 	translator := NewTranslator("test_translations", "")
-	err := translator.AddLanguage(lang)
+	err := translator.SetLanguage(lang)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	loc := mockLocalizer{locale: lang}
@@ -184,9 +184,9 @@ func TestTnFunction(t *testing.T) {
 
 func TestTnFunctionMultiPlural(t *testing.T) {
 	translator := NewTranslator("test_translations", "")
-	err := translator.AddLanguage(multiplural)
+	err := translator.SetLanguage(multiplural)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	loc := mockLocalizer{locale: multiplural}
@@ -217,9 +217,9 @@ func TestTnFunctionMultiPlural(t *testing.T) {
 
 func TestCheckMissingTranslations(t *testing.T) {
 	translator := NewTranslator(translationsDir, templateDir)
-	err := translator.AddLanguage(lang)
+	err := translator.SetLanguage(lang)
 	if err != nil {
-		t.Errorf("AddLanguage() error = %v", err)
+		t.Errorf("SetLanguage() error = %v", err)
 	}
 
 	// Test with missing translations
