@@ -113,7 +113,8 @@ func (t *Translator) TemplateDir() string {
 	return t.templateDir
 }
 
-func (t *Translator) AddLanguage(lang string) error {
+// SetLanguage adds a new language to the translator by loading its .po file.
+func (t *Translator) SetLanguage(lang string) error {
 	po := gotext.NewPo()
 
 	po.ParseFile(filepath.Join(t.translationsDir, lang+DefaultPoExtension))
@@ -124,6 +125,12 @@ func (t *Translator) AddLanguage(lang string) error {
 
 	t.languages[lang] = po
 	return nil
+}
+
+// AddLanguage adds a new language to the translator by loading its .po file.
+// Deprecated: use SetLanguage instead
+func (t *Translator) AddLanguage(lang string) error {
+	return t.SetLanguage(lang)
 }
 
 func (t *Translator) EnsureLanguage(lang string) error {
@@ -141,7 +148,7 @@ func (t *Translator) EnsureLanguage(lang string) error {
 		}
 	}
 
-	return t.AddLanguage(lang)
+	return t.SetLanguage(lang)
 }
 
 // CheckMissingTranslations scans template files for missing translations and logs them.

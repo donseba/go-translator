@@ -82,12 +82,49 @@ Localizer interface {
 ``` 
 
 
-Adding a New Language
+Setting a language to use
 --
 ```go
-tr.AddLanguage("en_US")
-tr.AddLanguage("nl_NL")
+tr.SetLanguage("en_US")
+tr.SetLanguage("nl_NL")
 ```
+
+Setting and possibly creating a New Language
+---------------------
+
+To add or ensure a language file exists (and is loaded), use the `EnsureLanguage` method. This will create a new `.po` file with the correct header (including plural forms) if it does not exist, and then load it into the translator:
+
+```go
+err := tr.EnsureLanguage("fr") // creates fr.po if missing, with correct header
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+- The generated `.po` file will always include the recommended headers:
+  - `Content-Type: text/plain; charset=UTF-8`
+  - `Content-Transfer-Encoding: 8bit`
+  - `Plural-Forms` (auto-filled from plural rules)
+  - `Language` (set to the language code)
+
+- Calling `EnsureLanguage` multiple times is safe and will not overwrite existing files or translations.
+
+Testing and Idempotency
+-----------------------
+
+- The package includes tests to ensure that language files are created with the correct headers and that repeated calls to `EnsureLanguage` do not overwrite existing files.
+- Plural rules are generated from `plurals.json` and included in the codebase for accuracy and maintainability.
+
+Updating Plural Rules
+---------------------
+
+If you update `plurals.json`, regenerate the plural rules Go map by running:
+
+```sh
+go run tools/generate_templates.go
+```
+
+This will update `generated_plural_templates.go` with the latest plural forms and language codes.
 
 Scanning for Missing Translations
 --
@@ -107,6 +144,8 @@ You can customize the prefix separator used in translation keys:
 tr.SetPrefixSeparator("__CUSTOM__")
 ```
 The default prefix separator is `__.`
+
+> **Note/Disclaimer:** While customizing the prefix separator is supported, it is generally recommended to use the CTL or CTN methods instead. These methods allow you to set translation context explicitly, which is more robust and flexible for handling similar keys in different contexts.
 
 Removing Prefixes from Translations
 --

@@ -198,7 +198,7 @@ func TestEnsureLanguage_Idempotent(t *testing.T) {
 		if err := os.Remove(poPath); err != nil && !os.IsNotExist(err) {
 			t.Errorf("Failed to clean up PO file: %v", err)
 		}
-	}
+	})
 
 	// First call should create the file
 	err := tr.EnsureLanguage(lang)
