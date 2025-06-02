@@ -3,7 +3,6 @@ package translator
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 )
@@ -126,7 +125,7 @@ msgstr ""
 
 // GenerateLanguageHeaderTemplatesFromJSON parses a plurals.json file and generates Go code for LanguageHeaderTemplates
 func GenerateLanguageHeaderTemplatesFromJSON(jsonPath, goPath string) error {
-	data, err := ioutil.ReadFile(jsonPath)
+	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return err
 	}
@@ -148,7 +147,7 @@ func GenerateLanguageHeaderTemplatesFromJSON(jsonPath, goPath string) error {
 		out += "\t\"" + code + "\": {PluralForms: \"" + pluralForms + "\", Language: \"" + code + "\"},\n"
 	}
 	out += "}\n"
-	return ioutil.WriteFile(goPath, []byte(out), 0644)
+	return os.WriteFile(goPath, []byte(out), 0644)
 }
 
 func itoa(i int) string {
