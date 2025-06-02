@@ -105,3 +105,28 @@ func (t *Translator) ctn(loc Localizer, ctx, singular, plural string, n int, arg
 	translated := translator.GetNC(singular, plural, n, ctx, args...)
 	return t.removePrefix(translated)
 }
+
+// Tl translates a string based on the given language tag and key.
+func (t *Translator) Tl(loc Localizer, key string, args ...any) string {
+	return t.tl(loc, key, args...)
+}
+
+// Tn method for handling plurals
+func (t *Translator) Tn(loc Localizer, singular, plural string, n int) string {
+	return t.tn(loc, singular, plural, n)
+}
+
+// Ctl method for handling string translation with context
+func (t *Translator) Ctl(loc Localizer, ctx, key string, args ...any) string {
+	return t.ctl(loc, ctx, key, args...)
+}
+
+// Ctn method for handling plurals with context
+func (t *Translator) Ctn(loc Localizer, ctx, singular, plural string, n int) string {
+	return t.ctn(loc, ctx, singular, plural, n)
+}
+
+// Details return the header of the language file
+func (t *Translator) Details(loc Localizer) map[string][]string {
+	return t.languages[loc.GetLocale()].Headers
+}
