@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/leonelquinteros/gotext"
 )
@@ -44,6 +45,7 @@ type (
 	}
 
 	Translator struct {
+		catalogueMu     sync.RWMutex
 		languages       map[string]*gotext.Po
 		translationsDir string
 		templateDir     string
@@ -55,12 +57,6 @@ type (
 	}
 
 	uniqueKey struct{ singular, plural string }
-
-	translationKey struct {
-		ctx    string
-		value  string
-		plural bool // true if it's a plural key
-	}
 )
 
 func NewTranslator(translationsDir, templateDir string) *Translator {
@@ -157,6 +153,8 @@ func (t *Translator) CheckMissingTranslations() error {
 	if err != nil {
 		return err
 	}
+	t.catalogueMu.Lock()
+	defer t.catalogueMu.Unlock()
 
 	var (
 		tr  = t.pot.GetDomain().GetTranslations()
@@ -205,6 +203,9 @@ func (t *Translator) CheckMissingTranslations() error {
 }
 
 func (t *Translator) ScanFiles(root string) error {
+	t.catalogueMu.Lock()
+	defer t.catalogueMu.Unlock()
+
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -217,6 +218,45 @@ func (t *Translator) ScanFiles(root string) error {
 		}
 		return nil
 	})
+}
+
+// recordKey serializes discovery and POT updates for concurrent lookups.
+func (t *Translator) recordKey(ctx string, entry uniqueKey) {
+	t.catalogueMu.RLock()
+	if t.hasRecordedKey(ctx, entry.singular) {
+		t.catalogueMu.RUnlock()
+		return
+	}
+	t.catalogueMu.RUnlock()
+
+	t.catalogueMu.Lock()
+	defer t.catalogueMu.Unlock()
+	if t.hasRecordedKey(ctx, entry.singular) {
+		return
+	}
+
+	if err := t.addToPotFileIfNotExists(ctx, entry); err != nil {
+		fmt.Println(err)
+		return
+	}
+	if ctx == "" {
+		t.uniqueKeys[entry.singular] = entry
+		return
+	}
+	if t.uniqueKeysCtx[ctx] == nil {
+		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
+	}
+	t.uniqueKeysCtx[ctx][entry.singular] = entry
+}
+
+// hasRecordedKey requires catalogueMu to be held for reading or writing.
+func (t *Translator) hasRecordedKey(ctx, key string) bool {
+	if ctx == "" {
+		_, exists := t.uniqueKeys[key]
+		return exists
+	}
+	_, exists := t.uniqueKeysCtx[ctx][key]
+	return exists
 }
 
 func (t *Translator) scanFile(filename string) error {
@@ -301,31 +341,22 @@ func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
 	return nil
 }
 
-func (t *Translator) addToPotFileIfNotExists(key translationKey) error {
-	tr := t.pot.GetDomain().GetTranslations()
-
-	if key.ctx == "" {
-		for _, potKey := range tr {
-			if key.value == potKey.ID {
+// addToPotFileIfNotExists must be called while catalogueMu is held.
+func (t *Translator) addToPotFileIfNotExists(ctx string, entry uniqueKey) error {
+	if ctx == "" {
+		for _, existing := range t.pot.GetDomain().GetTranslations() {
+			if existing.ID == entry.singular {
 				return nil
 			}
 		}
-
-		return t.addToPotFile("", uniqueKey{singular: key.value})
-	}
-
-	ctr := t.pot.GetDomain().GetCtxTranslations()
-	if ctr[key.ctx] == nil {
-		return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
-	}
-
-	for _, potKey := range ctr[key.ctx] {
-		if key.value == potKey.ID {
-			return nil
+	} else {
+		for _, existing := range t.pot.GetDomain().GetCtxTranslations()[ctx] {
+			if existing.ID == entry.singular {
+				return nil
+			}
 		}
 	}
-
-	return t.addToPotFile(key.ctx, uniqueKey{singular: key.value})
+	return t.addToPotFile(ctx, entry)
 }
 
 func (t *Translator) FuncMap() template.FuncMap {

@@ -6,15 +6,7 @@ import (
 
 // Tl translates a string based on the given language tag and key.
 func (t *Translator) tl(loc Localizer, key string, args ...any) string {
-	// Always add to POT if not exists
-	if _, ok := t.uniqueKeys[key]; !ok {
-		t.uniqueKeys[key] = uniqueKey{singular: key}
-		err := t.addToPotFileIfNotExists(translationKey{"", key, false})
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-
+	t.recordKey("", uniqueKey{singular: key})
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationTL, key)
@@ -29,17 +21,7 @@ func (t *Translator) tl(loc Localizer, key string, args ...any) string {
 }
 
 func (t *Translator) ctl(loc Localizer, ctx, key string, args ...any) string {
-	if t.uniqueKeysCtx[ctx] == nil {
-		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
-	}
-	if _, ok := t.uniqueKeysCtx[ctx][key]; !ok {
-		t.uniqueKeysCtx[ctx][key] = uniqueKey{singular: key}
-		err := t.addToPotFileIfNotExists(translationKey{ctx, key, false})
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-
+	t.recordKey(ctx, uniqueKey{singular: key})
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationCTL, ctx, key)
@@ -59,15 +41,7 @@ func (t *Translator) ctl(loc Localizer, ctx, key string, args ...any) string {
 
 // tn method for handling plurals
 func (t *Translator) tn(loc Localizer, singular, plural string, n int, args ...any) string {
-	// Always add to POT if not exists
-	if _, ok := t.uniqueKeys[singular]; !ok {
-		t.uniqueKeys[singular] = uniqueKey{singular: singular, plural: plural}
-		err := t.addToPotFileIfNotExists(translationKey{"", singular, true})
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-
+	t.recordKey("", uniqueKey{singular: singular, plural: plural})
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationTN, singular, plural)
@@ -82,17 +56,7 @@ func (t *Translator) tn(loc Localizer, singular, plural string, n int, args ...a
 }
 
 func (t *Translator) ctn(loc Localizer, ctx, singular, plural string, n int, args ...any) string {
-	if t.uniqueKeysCtx[ctx] == nil {
-		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
-	}
-	if _, ok := t.uniqueKeysCtx[ctx][singular]; !ok {
-		t.uniqueKeysCtx[ctx][singular] = uniqueKey{singular: singular, plural: plural}
-		err := t.addToPotFileIfNotExists(translationKey{ctx, singular, true})
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-
+	t.recordKey(ctx, uniqueKey{singular: singular, plural: plural})
 	translator, exists := t.languages[loc.GetLocale()]
 	if !exists {
 		return fmt.Sprintf(DefaultNoTranslationCTN, ctx, singular, plural)
