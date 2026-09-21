@@ -42,7 +42,7 @@ func main() {
     tr.AddLanguage("nl_NL")
 
     // check for missing translations and add them to the pot file
-    err = app.Translation.CheckMissingTranslations("translations.pot")
+    err := tr.CheckMissingTranslations()
     if err != nil {
         log.Fatal(err)
     }   
@@ -128,14 +128,22 @@ This will update `generated_plural_templates.go` with the latest plural forms an
 
 Scanning for Missing Translations
 --
-To check for missing translations in your templates:
+Run extraction before serving requests to add keys found in your templates to the POT file:
 
 ```go
-err := tr.CheckMissingTranslations("messages.pot")
+err := tr.CheckMissingTranslations()
 if err != nil {
-log.Fatal(err)
+    log.Fatal(err)
 }
 ```
+
+Translation calls (`Tl`, `Tn`, `Ctl`, and `Ctn`) also add previously unseen
+keys to the POT file, including keys constructed in Go code at runtime. This
+discovery is serialized so concurrent requests do not write the file at the
+same time. Run `CheckMissingTranslations` before serving requests to collect
+keys from templates early. Load and configure languages before using a
+translator from concurrent requests.
+
 Customizing Prefix Separator
 --
 You can customize the prefix separator used in translation keys:
