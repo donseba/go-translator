@@ -1,186 +1,132 @@
+<p align="center">
+    <a href="https://docs.gowebthings.com/go-translator">
+        <img src="./assets/go-translator-logo.png" alt="go-translator" height="70">
+    </a>
+</p>
+
 # go-translator
 
-Overview
---
-The Translator package is a Go module designed to facilitate easy and dynamic localization of applications. It provides a robust and flexible way to manage translations, including support for plural forms and customizable prefix handling for translation keys. This package utilizes the gotext library for managing PO files and integrates seamlessly with Go templates, making it an ideal solution for applications requiring multi-language support.
+[Documentation](https://docs.gowebthings.com/go-translator) · Part of [go-webthings](https://gowebthings.com/components).
 
-Features
---
-- **Dynamic Language Support**: Add new languages by parsing PO files.
-- **Template Integration**: Works with Go HTML templates, extracting translation keys directly from them.
-- **Pluralization Support**: Handles singular and plural forms for languages with complex plural rules.
-- **Contextual Translations**: Supports context-based translations for more accurate localization.
-- **Prefix Handling**: Customizable prefix handling in translation keys, allowing for organized and readable translation files.
-- **Missing Translation Detection**: Scans for and logs missing translations, simplifying the translation management process.
+go-translator provides gettext PO catalogues, plural forms, translation contexts, and helpers for Go `html/template`. A small `Localizer` interface supplies the locale for each request, so the application controls locale selection.
 
-Installation
---
-To install the Translator package, use the following go get command:
+## Installation
 
-```bash
+```sh
 go get github.com/donseba/go-translator
 ```
 
-Usage
---
-Initializing the Translator
+## Catalogue layout
+
+Create a `translations` directory and a `templates` directory containing your `.gohtml` files. Put one PO file per locale in `translations`, for example `en_US.po` and `nl_NL.po`. Locale strings must match the names used with `SetLanguage`.
+
+A minimal `translations/en_US.po` for the example:
+
+```po
+msgid ""
+msgstr ""
+"Language: en_US\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Hello, World!"
+msgstr "Hello, World!"
+
+msgid "%d message"
+msgid_plural "%d messages"
+msgstr[0] "%d message"
+msgstr[1] "%d messages"
+```
+
+## Quick start
 
 ```go
-package main 
+package main
 
-import "github.com/donseba/go-translator"
+import (
+	"html/template"
+	"log"
+	"os"
+
+	"github.com/donseba/go-translator"
+)
+
+type Locale string
+
+func (l Locale) GetLocale() string { return string(l) }
 
 func main() {
-    translationsDir := "path/to/translations"
-    templateDir := "path/to/templates"
-
-    tr := translator.NewTranslator(translationsDir, templateDir)
-    tr.SetPrefixSeparator("__.") // Set the prefix separator if different from the default
-
-    // load languages
-    tr.AddLanguage("en_US")
-    tr.AddLanguage("nl_NL")
-
-    // check for missing translations and add them to the pot file
-    err := tr.CheckMissingTranslations()
-    if err != nil {
-        log.Fatal(err)
-    }   
-	
-    // add template functions
-    // this will add the tl, tn, ctl and ctn functions to the template
-    var yourTemplateFunctions = make(template.FuncMap) 
-    for k, v := range tr.FuncMap() {
-        yourTemplateFunctions[k] = v
-    }
-```
-
-Using the Translator in Templates
---
-Use tl and ctl for translating singular texts and tn and ctn for plural forms.
-
-```html
-<!-- Singular -->
-<p>{{ tl .Loc "Hello, World!" }}</p>
-
-<!-- Plural -->
-<p>{{ tn .Loc "You have one message." "You have %d messages." 5, 5 }}</p>
-```
-
-Localizer interface
---
-
-The Localizer interface is used to provide the translator with the current language. 
-It is used to determine the correct translation for the given key.
-
-```go
-	//Localizer interface contains the methods that are needed for the translator
-Localizer interface {
-   // GetLocale returns the locale of the localizer, ie. "en_US"
-   GetLocale() string
-}
-``` 
-
-
-Setting a language to use
---
-```go
-tr.SetLanguage("en_US")
-tr.SetLanguage("nl_NL")
-```
-
-Setting and possibly creating a New Language
----------------------
-
-To add or ensure a language file exists (and is loaded), use the `EnsureLanguage` method. This will create a new `.po` file with the correct header (including plural forms) if it does not exist, and then load it into the translator:
-
-```go
-err := tr.EnsureLanguage("fr") // creates fr.po if missing, with correct header
-if err != nil {
-    log.Fatal(err)
+	tr := translator.NewTranslator("translations", "templates")
+	if err := tr.SetLanguage("en_US"); err != nil {
+		log.Fatal(err)
+	}
+	if err := tr.CheckMissingTranslations(); err != nil {
+		log.Fatal(err)
+	}
+	page := template.Must(template.New("welcome").Funcs(tr.FuncMap()).Parse(
+		`<h1>{{ tl .Loc "Hello, World!" }}</h1><p>{{ tn .Loc "%d message" "%d messages" .Count .Count }}</p>`,
+	))
+	if err := page.Execute(os.Stdout, struct {
+		Loc   Locale
+		Count int
+	}{Loc: "en_US", Count: 5}); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
-- The generated `.po` file will always include the recommended headers:
-  - `Content-Type: text/plain; charset=UTF-8`
-  - `Content-Transfer-Encoding: 8bit`
-  - `Plural-Forms` (auto-filled from plural rules)
-  - `Language` (set to the language code)
+`SetLanguage` loads a catalogue; it does not change a global current locale. Load every supported language and configure the translator before serving concurrent requests. Supply a request-specific `Localizer` to each lookup or template render:
 
-- Calling `EnsureLanguage` multiple times is safe and will not overwrite existing files or translations.
+```go
+type Localizer interface {
+    GetLocale() string
+}
+```
 
-Testing and Idempotency
------------------------
+Normalize locale names in your application (for example, map `en` to your loaded `en_US` catalogue). Missing languages or translations produce visible markers such as `*key*`; automatic fallback to another language is not provided.
 
-- The package includes tests to ensure that language files are created with the correct headers and that repeated calls to `EnsureLanguage` do not overwrite existing files.
-- Plural rules are generated from `plurals.json` and included in the codebase for accuracy and maintainability.
+## Template functions
 
-Updating Plural Rules
----------------------
+| Helper | Arguments after the localizer |
+|--------|------------------------------|
+| `tl` | key, optional formatting arguments |
+| `tn` | singular key, plural key, count, optional formatting arguments |
+| `ctl` | context, key, optional formatting arguments |
+| `ctn` | context, singular key, plural key, count, optional formatting arguments |
 
-If you update `plurals.json`, regenerate the plural rules Go map by running:
+```gotemplate
+{{ tl .Loc "Hello, %s" .Name }}
+{{ tn .Loc "%d message" "%d messages" .Count .Count }}
+{{ ctl .Loc "navigation" "Home" }}
+{{ ctn .Loc "inbox" "%d message" "%d messages" .Count .Count }}
+```
+
+Template arguments are separated by spaces. In the plural examples, the first `.Count` chooses the plural form; the second formats `%d`.
+
+Go code can use `Tl`, `Tn`, `Ctl`, and `Ctn`. `Tl` and `Ctl` accept formatting arguments; public `Tn` and `Ctn` accept the count only. Use the template helpers when plural text also needs formatting arguments.
+
+## Extracting translation keys
+
+`CheckMissingTranslations()` scans `.gohtml` files below the configured template directory and adds literal keys to `translations/translations.pot`. Run it during development or before serving requests.
+
+Extraction parses Go template syntax without requiring application helper functions to be registered. It supports `localizer` helpers, dot and variable localizers, nested expressions, template definitions, and escaped literal keys. Comments and dynamic keys are skipped. Malformed templates return an error containing the source filename.
+
+Runtime lookups also record previously unseen keys, including keys constructed in Go code. Those POT updates are serialized for concurrent lookups. Allow the catalogue directory to be writable when using runtime discovery; keep language loading, configuration, and catalogue editing outside request handling.
+
+## Creating and editing languages
+
+`EnsureLanguage("fr")` creates `fr.po` with language and plural-form headers if missing, then loads it. The translations directory must already exist. Repeated calls preserve an existing catalogue. `AddLanguage` is deprecated; use `SetLanguage`.
+
+Use `SetTL`, `SetTLN`, `SetCTL`, `SetCTN`, and `Write` for catalogue editing before requests start. If updating `plurals.json`, regenerate the plural rules with:
 
 ```sh
 go run tools/generate_templates.go
 ```
 
-This will update `generated_plural_templates.go` with the latest plural forms and language codes.
+## Translation contexts and prefixes
 
-Scanning for Missing Translations
---
-Run extraction before serving requests to add keys found in your templates to the POT file:
+Prefer explicit `ctl` / `ctn` contexts when the same text needs different translations. Legacy prefixed keys remain supported: `SetPrefixSeparator` changes the default `__.` separator, and the prefix is removed from translated output.
 
-Extraction parses Go template syntax without requiring application helper
-functions to be registered. It supports `localizer` helpers, dot and variable
-localizers, nested expressions, template definitions, and escaped literal keys.
-Template comments and dynamic keys are skipped. Malformed templates return an
-error containing the source filename.
+## License
 
-```go
-err := tr.CheckMissingTranslations()
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-Translation calls (`Tl`, `Tn`, `Ctl`, and `Ctn`) also add previously unseen
-keys to the POT file, including keys constructed in Go code at runtime. This
-discovery is serialized so concurrent requests do not write the file at the
-same time. Run `CheckMissingTranslations` before serving requests to collect
-keys from templates early. Load and configure languages before using a
-translator from concurrent requests.
-
-Customizing Prefix Separator
---
-You can customize the prefix separator used in translation keys:
-
-```go
-tr.SetPrefixSeparator("__CUSTOM__")
-```
-The default prefix separator is `__.`
-
-> **Note/Disclaimer:** While customizing the prefix separator is supported, it is generally recommended to use the CTL or CTN methods instead. These methods allow you to set translation context explicitly, which is more robust and flexible for handling similar keys in different contexts.
-
-Removing Prefixes from Translations
---
-The package automatically handles the removal of prefixes from translations at runtime:
-
-```go
-translatedText := tr.Tl(localizer, "prefix__.your_translation_key") // output your_translation_key
-```
-
-TODO
---
-- add caching functionality of the loaded translated keys.
-- add more unit tests
-- live reload translations when the file changes
-- fallback language
-
-
-Contributing
---
-Contributions to the Translator package are welcome! Please submit a pull request or open an issue for any bugs, features, or improvements.
-
-License
---
-This package is licensed under MIT. Please see the LICENSE file for more details.
+Distributed under the MIT License. See [LICENSE](LICENSE).
