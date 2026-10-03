@@ -130,7 +130,7 @@ func (t *Translator) EnsureLanguage(lang string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create new language file: %w", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		_, err = f.WriteString(h.HeaderString())
 		if err != nil {
 			return fmt.Errorf("failed to write header to new language file: %w", err)
@@ -362,7 +362,7 @@ func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buf := bufio.NewWriter(file)
 

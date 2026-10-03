@@ -68,7 +68,7 @@ func WritePOTFile(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = f.WriteString(h.HeaderString())
 	return err
 }
@@ -83,7 +83,7 @@ func WritePOFile(path, language string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = f.WriteString(h.HeaderString())
 	return err
 }
