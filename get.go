@@ -16,7 +16,7 @@ func (t *Translator) tl(loc Localizer, key string, args ...any) string {
 		return fmt.Sprintf(DefaultNoTranslationTL, key)
 	}
 
-	translated := translator.Get(fmt.Sprintf("%s", key), args...) //nolint:gosimple
+	translated := translator.Get(fmt.Sprintf("%s", key), args...) //nolint:staticcheck // Keep dynamic catalogue keys from being inferred as printf format parameters.
 	return t.removePrefix(translated)
 }
 
@@ -35,7 +35,7 @@ func (t *Translator) ctl(loc Localizer, ctx, key string, args ...any) string {
 		return fmt.Sprintf(DefaultNoTranslationCTL, ctx, key)
 	}
 
-	translated := translator.GetC(fmt.Sprintf("%s", key), ctx, args...) //nolint:gosimple
+	translated := translator.GetC(fmt.Sprintf("%s", key), ctx, args...) //nolint:staticcheck // Keep dynamic catalogue keys from being inferred as printf format parameters.
 	return t.removePrefix(translated)
 }
 

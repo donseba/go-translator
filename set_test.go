@@ -158,7 +158,9 @@ func TestEnsureLanguage(t *testing.T) {
 
 	// Ensure file does not exist
 	if _, err := os.Stat(poPath); err == nil {
-		os.Remove(poPath)
+		if err := os.Remove(poPath); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Cleanup(func() {
@@ -191,7 +193,9 @@ func TestEnsureLanguage_Idempotent(t *testing.T) {
 
 	// Ensure file does not exist
 	if _, err := os.Stat(poPath); err == nil {
-		os.Remove(poPath)
+		if err := os.Remove(poPath); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Cleanup(func() {
@@ -213,7 +217,9 @@ func TestEnsureLanguage_Idempotent(t *testing.T) {
 		t.Fatalf("Failed to open PO file for appending: %v", err)
 	}
 	_, err = f.WriteString(marker)
-	f.Close()
+	if closeErr := f.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
 	if err != nil {
 		t.Fatalf("Failed to write marker: %v", err)
 	}
