@@ -130,6 +130,12 @@ Scanning for Missing Translations
 --
 Run extraction before serving requests to add keys found in your templates to the POT file:
 
+Extraction parses Go template syntax without requiring application helper
+functions to be registered. It supports `localizer` helpers, dot and variable
+localizers, nested expressions, template definitions, and escaped literal keys.
+Template comments and dynamic keys are skipped. Malformed templates return an
+error containing the source filename.
+
 ```go
 err := tr.CheckMissingTranslations()
 if err != nil {
