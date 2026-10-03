@@ -7,18 +7,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
+	"text/template/parse"
 
 	"github.com/leonelquinteros/gotext"
-)
-
-var (
-	re          = regexp.MustCompile(`{{\s*tl\s+(?:"[^"]+"|[^"]+)\s+"([^"]+)"`)
-	rePlural    = regexp.MustCompile(`{{\s*tn\s+[.\$][a-zA-Z_]\w*\s+"([^"]+)"\s+"([^"]+)"(.*?)\s*}}`)
-	reCtx       = regexp.MustCompile(`{{\s*ctl\s+[.\$][a-zA-Z_]\w*\s+"([^"]+)"\s+"([^"]+)"\s*}}`)
-	reCtxPlural = regexp.MustCompile(`{{\s*ctn\s+[.\$][a-zA-Z_]\w*\s+"([^"]+)"\s+"([^"]+)"\s+"([^"]+)"`)
 )
 
 var (
@@ -265,41 +258,103 @@ func (t *Translator) scanFile(filename string) error {
 		return err
 	}
 
-	matches := re.FindAllStringSubmatch(string(data), -1)
-	for _, match := range matches {
-		if len(match) > 1 {
-			t.uniqueKeys[match[1]] = uniqueKey{singular: match[1]}
-		}
+	trees := make(map[string]*parse.Tree)
+	tree := parse.New(filename)
+	// Extraction does not execute templates or require application helpers.
+	tree.Mode = parse.SkipFuncCheck
+	if _, err := tree.Parse(string(data), "{{", "}}", trees); err != nil {
+		return fmt.Errorf("scan translations in %s: %w", filename, err)
 	}
-
-	matchesPlural := rePlural.FindAllStringSubmatch(string(data), -1)
-	for _, match := range matchesPlural {
-		if len(match) > 2 {
-			t.uniqueKeys[match[1]] = uniqueKey{singular: match[1], plural: match[2]}
-		}
+	for _, tree := range trees {
+		t.scanTemplateNode(tree.Root)
 	}
-
-	matchesCtx := reCtx.FindAllStringSubmatch(string(data), -1)
-	for _, match := range matchesCtx {
-		if len(match) > 1 {
-			if t.uniqueKeysCtx[match[1]] == nil {
-				t.uniqueKeysCtx[match[1]] = make(map[string]uniqueKey)
-			}
-			t.uniqueKeysCtx[match[1]][match[2]] = uniqueKey{singular: match[2]}
-		}
-	}
-
-	matchesCtxPlural := reCtxPlural.FindAllStringSubmatch(string(data), -1)
-	for _, match := range matchesCtxPlural {
-		if len(match) > 2 {
-			if t.uniqueKeysCtx[match[1]] == nil {
-				t.uniqueKeysCtx[match[1]] = make(map[string]uniqueKey)
-			}
-			t.uniqueKeysCtx[match[1]][match[2]] = uniqueKey{singular: match[2], plural: match[3]}
-		}
-	}
-
 	return nil
+}
+
+func (t *Translator) scanTemplateNode(node parse.Node) {
+	switch node := node.(type) {
+	case *parse.ListNode:
+		if node != nil {
+			for _, child := range node.Nodes {
+				t.scanTemplateNode(child)
+			}
+		}
+	case *parse.ActionNode:
+		t.scanTemplateNode(node.Pipe)
+	case *parse.IfNode:
+		t.scanTemplateNode(node.Pipe)
+		t.scanTemplateNode(node.List)
+		t.scanTemplateNode(node.ElseList)
+	case *parse.RangeNode:
+		t.scanTemplateNode(node.Pipe)
+		t.scanTemplateNode(node.List)
+		t.scanTemplateNode(node.ElseList)
+	case *parse.WithNode:
+		t.scanTemplateNode(node.Pipe)
+		t.scanTemplateNode(node.List)
+		t.scanTemplateNode(node.ElseList)
+	case *parse.TemplateNode:
+		t.scanTemplateNode(node.Pipe)
+	case *parse.PipeNode:
+		if node != nil {
+			for _, cmd := range node.Cmds {
+				t.scanTemplateNode(cmd)
+			}
+		}
+	case *parse.CommandNode:
+		t.scanTranslationCommand(node)
+		for _, arg := range node.Args {
+			t.scanTemplateNode(arg)
+		}
+	}
+}
+
+func (t *Translator) scanTranslationCommand(cmd *parse.CommandNode) {
+	if len(cmd.Args) == 0 {
+		return
+	}
+	fn, ok := cmd.Args[0].(*parse.IdentifierNode)
+	if !ok {
+		return
+	}
+	count := map[string]int{"tl": 1, "tn": 2, "ctl": 2, "ctn": 3}[fn.Ident]
+	if count == 0 || len(cmd.Args) < count+2 {
+		return
+	}
+	args := make([]string, count)
+	for i := range args {
+		literal, ok := cmd.Args[i+2].(*parse.StringNode)
+		if !ok {
+			return // Dynamic keys are discovered by runtime translation calls.
+		}
+		args[i] = literal.Text
+	}
+	var ctx string
+	entry := uniqueKey{}
+	switch fn.Ident {
+	case "tl":
+		entry.singular = args[0]
+	case "tn":
+		entry.singular, entry.plural = args[0], args[1]
+	case "ctl":
+		ctx, entry.singular = args[0], args[1]
+	case "ctn":
+		ctx, entry.singular, entry.plural = args[0], args[1], args[2]
+	}
+	if ctx == "" {
+		if entry.plural == "" {
+			entry.plural = t.uniqueKeys[entry.singular].plural
+		}
+		t.uniqueKeys[entry.singular] = entry
+		return
+	}
+	if t.uniqueKeysCtx[ctx] == nil {
+		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
+	}
+	if entry.plural == "" {
+		entry.plural = t.uniqueKeysCtx[ctx][entry.singular].plural
+	}
+	t.uniqueKeysCtx[ctx][entry.singular] = entry
 }
 
 func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
