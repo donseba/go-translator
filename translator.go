@@ -17,6 +17,7 @@ import (
 var (
 	ErrorLanguageNotFound      = fmt.Errorf("language not found")
 	ErrorLanguageAlreadyExists = fmt.Errorf("language already exists")
+	ErrorInvalidCatalogue      = fmt.Errorf("invalid translation catalogue")
 )
 
 var (
@@ -31,7 +32,7 @@ var (
 )
 
 type (
-	//Localizer interface contains the methods that are needed for the translator
+	// Localizer interface contains the methods that are needed for the translator
 	Localizer interface {
 		// GetLocale returns the locale of the localizer, ie. "en_US"
 		GetLocale() string
@@ -203,7 +204,7 @@ func (t *Translator) ScanFiles(root string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && (strings.HasSuffix(path, TemplateExtension)) {
+		if !info.IsDir() && strings.HasSuffix(path, TemplateExtension) {
 			err = t.scanFile(path)
 			if err != nil {
 				return err
@@ -358,7 +359,7 @@ func (t *Translator) scanTranslationCommand(cmd *parse.CommandNode) {
 }
 
 func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
-	file, err := os.OpenFile(path.Join(t.translationsDir, t.potFile), os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path.Join(t.translationsDir, t.potFile), os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}

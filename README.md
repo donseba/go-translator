@@ -117,6 +117,8 @@ Runtime lookups also record previously unseen keys, including keys constructed i
 
 `EnsureLanguage("fr")` creates `fr.po` with language and plural-form headers if missing, then loads it. The translations directory must already exist. Repeated calls preserve an existing catalogue. `AddLanguage` is deprecated; use `SetLanguage`.
 
+`MergeDefaults(language, files, path)` adds module-provided PO messages to an already loaded language. Application entries, including blank ones, win; contexts and all plural forms are preserved. Catalogue languages must match; plural rules must also match when the incoming catalogue contains plural messages. Merging does not rewrite the application PO file and must run before serving requests.
+
 Use `SetTL`, `SetTLN`, `SetCTL`, `SetCTN`, and `Write` for catalogue editing before requests start. If updating `plurals.json`, regenerate the plural rules with:
 
 ```sh
