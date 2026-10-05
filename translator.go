@@ -2,13 +2,15 @@ package translator
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template/parse"
 
 	"github.com/leonelquinteros/gotext"
@@ -48,6 +50,7 @@ type (
 		uniqueKeysCtx   map[string]map[string]uniqueKey
 		potFile         string
 		pot             *gotext.Po
+		recordMissing   atomic.Bool
 	}
 
 	uniqueKey struct{ singular, plural string }
@@ -63,6 +66,8 @@ func NewTranslator(translationsDir, templateDir string) *Translator {
 		uniqueKeys:      make(map[string]uniqueKey),
 		uniqueKeysCtx:   make(map[string]map[string]uniqueKey),
 	}
+
+	tr.recordMissing.Store(true)
 
 	// load pot file if it exists
 	tr.pot = gotext.NewPo()
@@ -85,6 +90,20 @@ func (t *Translator) SetPotFile(potFile string) {
 
 func (t *Translator) PotFile() string {
 	return t.potFile
+}
+
+// SetRecordMissing turns runtime key recording on or off. Recording is on by
+// default: every lookup of a key that is not yet in the POT file appends it.
+// Turn it off in production so serving requests never writes to disk;
+// CheckMissingTranslations and ScanFiles keep working because they are
+// explicit extraction steps.
+func (t *Translator) SetRecordMissing(record bool) {
+	t.recordMissing.Store(record)
+}
+
+// RecordMissing reports whether runtime lookups record unseen keys in the POT file.
+func (t *Translator) RecordMissing() bool {
+	return t.recordMissing.Load()
 }
 
 func (t *Translator) SetTranslationsDir(translationsDir string) {
@@ -216,6 +235,10 @@ func (t *Translator) ScanFiles(root string) error {
 
 // recordKey serializes discovery and POT updates for concurrent lookups.
 func (t *Translator) recordKey(ctx string, entry uniqueKey) {
+	if !t.recordMissing.Load() {
+		return
+	}
+
 	t.catalogueMu.RLock()
 	if t.hasRecordedKey(ctx, entry.singular) {
 		t.catalogueMu.RUnlock()
@@ -358,8 +381,35 @@ func (t *Translator) scanTranslationCommand(cmd *parse.CommandNode) {
 	t.uniqueKeysCtx[ctx][entry.singular] = entry
 }
 
+// ensurePotFile creates the POT file with a template header when it does not
+// exist yet, so key discovery works on a fresh project. Like EnsureLanguage, it
+// expects the translations directory to exist. It must be called while
+// catalogueMu is held.
+func (t *Translator) ensurePotFile() error {
+	potPath := filepath.Join(t.translationsDir, t.potFile)
+
+	_, err := os.Stat(potPath)
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	if err := WritePOTFile(potPath); err != nil {
+		return fmt.Errorf("create POT file: %w", err)
+	}
+
+	return nil
+}
+
 func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
-	file, err := os.OpenFile(path.Join(t.translationsDir, t.potFile), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err := t.ensurePotFile(); err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(filepath.Join(t.translationsDir, t.potFile), os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
