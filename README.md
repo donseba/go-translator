@@ -127,7 +127,9 @@ A typical workflow: extract keys into `translations.pot`, open a language `.po` 
 
 `EnsureLanguage("fr")` creates `fr.po` with language and plural-form headers if missing, then loads it. The translations directory must already exist. Repeated calls preserve an existing catalogue. `AddLanguage` is deprecated; use `SetLanguage`.
 
-`MergeDefaults(language, files, path)` adds module-provided PO messages to an already loaded language. Application entries, including blank ones, win; contexts and all plural forms are preserved. Catalogue languages must match; plural rules must also match when the incoming catalogue contains plural messages. Merging does not rewrite the application PO file and must run before serving requests.
+`MergeDefaults(language, files, path)` adds module-provided PO messages to an already loaded language. Translated application entries win. Blank entries (`msgstr ""`, or a plural whose `msgstr[n]` forms are all empty, as left by an "Update from POT" in Poedit) count as missing, so the defaults fill them; a partly translated plural is kept as is. Contexts and all plural forms are preserved. Catalogue languages must match; plural rules must also match when the incoming catalogue contains plural messages. Merging does not rewrite the application PO file and must run before serving requests.
+
+At lookup time an empty translation behaves like a missing one: `Tl`, `Ctl`, `Tn` and `Ctn` return the untranslated marker (for example `*key*`) instead of an empty string.
 
 Use `SetTL`, `SetTLN`, `SetCTL`, `SetCTN`, and `Write` for catalogue editing before requests start. If updating `plurals.json`, regenerate the plural rules with:
 
