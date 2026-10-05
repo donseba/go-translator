@@ -107,11 +107,21 @@ Go code can use `Tl`, `Tn`, `Ctl`, and `Ctn`. `Tl` and `Ctl` accept formatting a
 
 ## Extracting translation keys
 
-`CheckMissingTranslations()` scans `.gohtml` files below the configured template directory and adds literal keys to `translations/translations.pot`. Run it during development or before serving requests.
+`CheckMissingTranslations()` scans `.gohtml` files below the configured template directory and adds literal keys to `translations/translations.pot`. Run it during development or before serving requests. When the POT file does not exist yet, it is created with a gettext header first; the translations directory itself must exist.
 
 Extraction parses Go template syntax without requiring application helper functions to be registered. It supports `localizer` helpers, dot and variable localizers, nested expressions, template definitions, and escaped literal keys. Comments and dynamic keys are skipped. Malformed templates return an error containing the source filename.
 
 Runtime lookups also record previously unseen keys, including keys constructed in Go code. Those POT updates are serialized for concurrent lookups. Allow the catalogue directory to be writable when using runtime discovery; keep language loading, configuration, and catalogue editing outside request handling.
+
+Runtime recording is on by default. Turn it off where serving requests must never write to disk, for example in production:
+
+```go
+tr.SetRecordMissing(false)
+```
+
+With recording off, lookups only translate; `CheckMissingTranslations` and `ScanFiles` still extract keys when you call them. `RecordMissing()` reports the current setting.
+
+A typical workflow: extract keys into `translations.pot`, open a language `.po` file in Poedit, choose *Translation → Update from POT File*, translate the new entries, and save.
 
 ## Creating and editing languages
 
