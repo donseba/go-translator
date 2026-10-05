@@ -3,6 +3,7 @@ package translator
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"testing/fstest"
 )
 
-func TestMergeDefaultsPreservesOverridesContextsAndEveryPluralForm(t *testing.T) {
+func TestMergeDefaultsPreservesTranslatedOverridesContextsAndEveryPluralForm(t *testing.T) {
 	dir := t.TempDir()
 	header := `msgid ""
 msgstr ""
@@ -79,7 +80,7 @@ msgstr[5] "context other"
 		}
 	}
 	loc := mockLocalizer{locale: "plural6"}
-	if tr.Tl(loc, "Overridden") != "Application value" || tr.Tl(loc, "Blank") != "*Blank*" || tr.Ctl(loc, "menu", "Open") != "Application context" || tr.Ctl(loc, "action", "Open") != "New context" {
+	if tr.Tl(loc, "Overridden") != "Application value" || tr.Tl(loc, "Blank") != "Module blank replacement" || tr.Ctl(loc, "menu", "Open") != "Application context" || tr.Ctl(loc, "action", "Open") != "New context" {
 		t.Fatal("merge replaced an application entry or lost a context", tr.Tl(loc, "Overridden"), tr.Tl(loc, "Blank"), tr.Ctl(loc, "menu", "Open"), tr.Ctl(loc, "action", "Open"))
 	}
 	for _, test := range []struct {
@@ -106,5 +107,135 @@ msgstr[5] "context other"
 	invalid := fstest.MapFS{"invalid.po": &fstest.MapFile{Data: []byte("invalid")}}
 	if err := tr.MergeDefaults("plural6", invalid, "invalid.po"); !errors.Is(err, ErrorInvalidCatalogue) {
 		t.Fatal(err)
+	}
+}
+
+func TestMergeDefaultsFillsBlankEntries(t *testing.T) {
+	dir := t.TempDir()
+	header := `msgid ""
+msgstr ""
+"Language: nl_NL\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+`
+	// This is what a catalogue looks like after "Update from POT": every new
+	// message is present with an empty translation.
+	original := header + `msgid "Save"
+msgstr ""
+
+msgid "Cancel"
+msgstr "Afbreken"
+
+msgid "Untranslated everywhere"
+msgstr ""
+
+msgctxt "menu"
+msgid "Open"
+msgstr ""
+
+msgid "file"
+msgid_plural "files"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "page"
+msgid_plural "pages"
+msgstr[0] "pagina"
+msgstr[1] ""
+
+msgctxt "inbox"
+msgid "message"
+msgid_plural "messages"
+msgstr[0] ""
+msgstr[1] ""
+`
+	if err := os.WriteFile(filepath.Join(dir, "nl_NL.po"), []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WritePOTFile(filepath.Join(dir, DefaultPotFile)); err != nil {
+		t.Fatal(err)
+	}
+
+	defaults := fstest.MapFS{"defaults.po": &fstest.MapFile{Data: []byte(header + `msgid "Save"
+msgstr "Opslaan"
+
+msgid "Cancel"
+msgstr "Annuleren"
+
+msgid "Untranslated everywhere"
+msgstr ""
+
+msgctxt "menu"
+msgid "Open"
+msgstr "Openen"
+
+msgid "file"
+msgid_plural "files"
+msgstr[0] "bestand"
+msgstr[1] "bestanden"
+
+msgid "page"
+msgid_plural "pages"
+msgstr[0] "standaardpagina"
+msgstr[1] "standaardpagina's"
+
+msgctxt "inbox"
+msgid "message"
+msgid_plural "messages"
+msgstr[0] "bericht"
+msgstr[1] "berichten"
+`)}}
+
+	tr := NewTranslator(dir, "")
+	if err := tr.SetLanguage("nl_NL"); err != nil {
+		t.Fatal(err)
+	}
+
+	loc := mockLocalizer{locale: "nl_NL"}
+
+	// Before merging, blank entries fall back exactly like missing ones.
+	if got := tr.Tl(loc, "Save"); got != "*Save*" {
+		t.Fatalf("blank singular before merge: %q", got)
+	}
+
+	if got := tr.Tn(loc, "file", "files", 2); got != fmt.Sprintf(DefaultNoTranslationTN, "file", "files") {
+		t.Fatalf("blank plural before merge: %q", got)
+	}
+
+	if err := tr.MergeDefaults("nl_NL", defaults, "defaults.po"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		got  string
+		want string
+	}{
+		{tr.Tl(loc, "Save"), "Opslaan"},
+		{tr.Tl(loc, "Cancel"), "Afbreken"},
+		{tr.Tl(loc, "Untranslated everywhere"), "*Untranslated everywhere*"},
+		{tr.Ctl(loc, "menu", "Open"), "Openen"},
+		{tr.Tn(loc, "file", "files", 1), "bestand"},
+		{tr.Tn(loc, "file", "files", 2), "bestanden"},
+		{tr.Ctn(loc, "inbox", "message", "messages", 1), "bericht"},
+		{tr.Ctn(loc, "inbox", "message", "messages", 2), "berichten"},
+		// A partly translated plural is the application's own work and wins;
+		// its missing form falls back like a missing message.
+		{tr.Tn(loc, "page", "pages", 1), "pagina"},
+		{tr.Tn(loc, "page", "pages", 2), fmt.Sprintf(DefaultNoTranslationTN, "page", "pages")},
+	} {
+		if test.got != test.want {
+			t.Errorf("got %q, want %q", test.got, test.want)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "nl_NL.po"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(data) != original {
+		t.Fatal("merge rewrote the application's PO file")
 	}
 }
