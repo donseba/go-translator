@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -25,9 +26,13 @@ type TranslationFileHeader struct {
 	PluralForms             string
 }
 
+// headerDateFormat is the date format of gettext headers, such as
+// POT-Creation-Date and PO-Revision-Date.
+const headerDateFormat = "2006-01-02 15:04-0700"
+
 // DefaultHeader returns a default header for a given language
 func DefaultHeader(language string) TranslationFileHeader {
-	now := time.Now().Format("2006-01-02 15:04-0700")
+	now := time.Now().Format(headerDateFormat)
 	return TranslationFileHeader{
 		ProjectID:               "PACKAGE VERSION",
 		ReportMsgidBugsTo:       "",
@@ -43,16 +48,26 @@ func DefaultHeader(language string) TranslationFileHeader {
 	}
 }
 
-// GetHeaderForLanguage returns a header template for a given language, falling back to DefaultHeader
+// GetHeaderForLanguage returns a header for language with its plural rules:
+// those of the language itself, else those of its base language (pl for
+// pl_PL), else DefaultHeader.
 func GetHeaderForLanguage(language string) TranslationFileHeader {
-	if h, ok := LanguageHeaderTemplates[language]; ok {
-		h.ProjectID = "Go-FORM"
-		h.POTCreationDate = time.Now().Format("2006-01-02 15:04-0700")
+	h, ok := LanguageHeaderTemplates[language]
+	if !ok {
+		base, _, _ := strings.Cut(strings.ReplaceAll(language, "-", "_"), "_")
+		h, ok = LanguageHeaderTemplates[strings.ToLower(base)]
+	}
+
+	if ok {
+		h.ProjectID = "PACKAGE VERSION"
+		h.POTCreationDate = time.Now().Format(headerDateFormat)
 		h.PORevisionDate = h.POTCreationDate
-		h.LanguageTeam = "Go-FORM"
+		h.LanguageTeam = ""
+		h.MIMEVersion = "1.0"
 		h.Language = language
 		h.ContentType = "text/plain; charset=UTF-8"
 		h.ContentTransferEncoding = "8bit"
+
 		return h
 	}
 	return DefaultHeader(language)

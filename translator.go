@@ -6,31 +6,50 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"text/template/parse"
+
+	"github.com/donseba/go-translator/v2/extract"
 
 	"github.com/leonelquinteros/gotext"
 )
 
 var (
-	ErrorLanguageNotFound      = fmt.Errorf("language not found")
+	// ErrorLanguageNotFound reports a language that is not loaded, or a
+	// catalogue file that cannot be read.
+	ErrorLanguageNotFound = fmt.Errorf("language not found")
+	// ErrorLanguageAlreadyExists reports a NewLanguage for a loaded language.
 	ErrorLanguageAlreadyExists = fmt.Errorf("language already exists")
-	ErrorInvalidCatalogue      = fmt.Errorf("invalid translation catalogue")
+	// ErrorInvalidCatalogue reports a catalogue that does not fit the loaded
+	// language, see MergeDefaults and LoadLanguages.
+	ErrorInvalidCatalogue = fmt.Errorf("invalid translation catalogue")
 )
 
 var (
-	TemplateExtension       = ".gohtml"
-	DefaultPotFile          = "translations.pot"
-	DefaultPoExtension      = ".po"
-	DefaultNoTranslationTL  = "*%s*"
-	DefaultNoTranslationTN  = "*%s/%s*"
+	// TemplateExtension is the extension of the template files that ScanFiles
+	// and CheckMissingTranslations scan.
+	TemplateExtension = ".gohtml"
+	// DefaultPotFile is the name of the POT file in the translations directory.
+	DefaultPotFile = "translations.pot"
+	// DefaultPoExtension is the extension of the catalogue files.
+	DefaultPoExtension = ".po"
+	// DefaultNoTranslationTL is the marker of a missing translation for Tl.
+	DefaultNoTranslationTL = "*%s*"
+	// DefaultNoTranslationTN is the marker of a missing translation for Tn.
+	DefaultNoTranslationTN = "*%s/%s*"
+	// DefaultNoTranslationCTL is the marker of a missing translation for Ctl.
 	DefaultNoTranslationCTL = "*%s/%s*"
+	// DefaultNoTranslationCTN is the marker of a missing translation for Ctn.
 	DefaultNoTranslationCTN = "*%s/%s/%s*"
-	DefaultSeparator        = "__."
+	// DefaultSeparator is the prefix separator of a new translator, see
+	// SetPrefixSeparator.
+	DefaultSeparator = "__."
 )
 
 type (
@@ -40,6 +59,9 @@ type (
 		GetLocale() string
 	}
 
+	// Translator looks up the translations of texts in the catalogues of its
+	// languages and records the keys it has not seen in a POT file. Make one
+	// with New, NewTranslator or Untranslated.
 	Translator struct {
 		catalogueMu     sync.RWMutex
 		languages       map[string]*gotext.Po
@@ -49,13 +71,19 @@ type (
 		uniqueKeys      map[string]uniqueKey
 		uniqueKeysCtx   map[string]map[string]uniqueKey
 		potFile         string
-		pot             *gotext.Po
+		pot             *gotext.Po // nil until loadPot; guarded by catalogueMu
 		recordMissing   atomic.Bool
+		untranslated    func(Miss) string
+		fallback        bool
 	}
 
 	uniqueKey struct{ singular, plural string }
 )
 
+// NewTranslator returns a translator for the catalogues in translationsDir and
+// the templates below templateDir. Unlike New, it records every key a lookup
+// has not seen in the POT file, which it reads the first time a key is
+// recorded or extracted (see SetRecordMissing).
 func NewTranslator(translationsDir, templateDir string) *Translator {
 	tr := &Translator{
 		translationsDir: translationsDir,
@@ -69,31 +97,41 @@ func NewTranslator(translationsDir, templateDir string) *Translator {
 
 	tr.recordMissing.Store(true)
 
-	// load pot file if it exists
-	tr.pot = gotext.NewPo()
-	tr.pot.ParseFile(filepath.Join(tr.translationsDir, tr.potFile))
-
 	return tr
 }
 
+// SetPrefixSeparator sets the separator that ends a key prefix,
+// DefaultSeparator by default. A translated text loses everything up to and
+// including the last separator.
 func (t *Translator) SetPrefixSeparator(prefix string) {
 	t.prefixSeparator = prefix
 }
 
+// PrefixSeparator returns the separator that ends a key prefix.
 func (t *Translator) PrefixSeparator() string {
 	return t.prefixSeparator
 }
 
+// SetPotFile sets the name of the POT file in the translations directory,
+// DefaultPotFile by default. The file is read the next time a key is
+// recorded or extracted.
 func (t *Translator) SetPotFile(potFile string) {
+	t.catalogueMu.Lock()
+	defer t.catalogueMu.Unlock()
+
 	t.potFile = potFile
+	t.pot = nil
 }
 
+// PotFile returns the name of the POT file in the translations directory.
 func (t *Translator) PotFile() string {
 	return t.potFile
 }
 
 // SetRecordMissing turns runtime key recording on or off. Recording is on by
-// default: every lookup of a key that is not yet in the POT file appends it.
+// default for NewTranslator and off for New and Untranslated: every lookup of
+// a key that is not yet in the POT file appends it. An empty key is never
+// recorded.
 // Turn it off in production so serving requests never writes to disk;
 // CheckMissingTranslations and ScanFiles keep working because they are
 // explicit extraction steps.
@@ -106,42 +144,60 @@ func (t *Translator) RecordMissing() bool {
 	return t.recordMissing.Load()
 }
 
+// SetTranslationsDir sets the directory of the catalogues and the POT file.
+// The POT file is read the next time a key is recorded or extracted.
 func (t *Translator) SetTranslationsDir(translationsDir string) {
+	t.catalogueMu.Lock()
+	defer t.catalogueMu.Unlock()
+
 	t.translationsDir = translationsDir
+	t.pot = nil
 }
 
+// TranslationsDir returns the directory of the catalogues and the POT file.
 func (t *Translator) TranslationsDir() string {
 	return t.translationsDir
 }
 
+// SetTemplateDir sets the directory that CheckMissingTranslations scans.
 func (t *Translator) SetTemplateDir(templateDir string) {
 	t.templateDir = templateDir
 }
 
+// TemplateDir returns the directory that CheckMissingTranslations scans. New
+// leaves it empty.
 func (t *Translator) TemplateDir() string {
 	return t.templateDir
 }
 
-// SetLanguage adds a new language to the translator by loading its .po file.
+// SetLanguage loads the catalogue of lang from <translations dir>/<lang>.po.
+// A catalogue already loaded under lang is replaced.
+//
+// When the file cannot be read, the error matches both ErrorLanguageNotFound
+// and the cause, such as fs.ErrNotExist, with errors.Is. A catalogue without
+// a Language header is loaded as lang. See SetLanguageFS and LoadLanguages
+// to load catalogues from an fs.FS.
 func (t *Translator) SetLanguage(lang string) error {
-	po := gotext.NewPo()
-
-	po.ParseFile(filepath.Join(t.translationsDir, lang+DefaultPoExtension))
-
-	if po.Language == "" {
-		return ErrorLanguageNotFound
+	data, err := os.ReadFile(filepath.Join(t.translationsDir, lang+DefaultPoExtension))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrorLanguageNotFound, err)
 	}
 
-	t.languages[lang] = po
+	t.setCatalogue(lang, data)
+
 	return nil
 }
 
 // AddLanguage adds a new language to the translator by loading its .po file.
-// Deprecated: use SetLanguage instead
+//
+// Deprecated: use SetLanguage instead.
 func (t *Translator) AddLanguage(lang string) error {
 	return t.SetLanguage(lang)
 }
 
+// EnsureLanguage creates <lang>.po in the translations directory, with the
+// header of GetHeaderForLanguage, when it does not exist, and then loads it
+// with SetLanguage. The translations directory must exist.
 func (t *Translator) EnsureLanguage(lang string) error {
 	poPath := filepath.Join(t.translationsDir, lang+DefaultPoExtension)
 	if _, err := os.Stat(poPath); os.IsNotExist(err) {
@@ -160,82 +216,155 @@ func (t *Translator) EnsureLanguage(lang string) error {
 	return t.SetLanguage(lang)
 }
 
-// CheckMissingTranslations scans template files for missing translations and logs them.
+// CheckMissingTranslations scans the template files below the template
+// directory (see ScanFiles) and appends the keys that are not in the POT file
+// to it, in the order they first appear in the templates, followed by keys
+// recorded at runtime in sorted order. It returns the errors of every key it
+// could not add, joined. To write a complete POT file with references
+// instead, use the extract package.
 func (t *Translator) CheckMissingTranslations() error {
-	err := t.ScanFiles(t.templateDir)
-	if err != nil {
-		return err
-	}
 	t.catalogueMu.Lock()
 	defer t.catalogueMu.Unlock()
 
+	catalog, err := t.scan(t.templateDir)
+	if err != nil {
+		return err
+	}
+
 	var (
-		tr  = t.pot.GetDomain().GetTranslations()
-		ctr = t.pot.GetDomain().GetCtxTranslations()
+		pot     = t.loadPot()
+		written = map[potKey]bool{}
+		errs    []error
 	)
 
-	for key, entry := range t.uniqueKeys {
-		found := false
-		for _, potKey := range tr {
-			if key == potKey.ID {
-				found = true
-				break
-			}
-		}
+	for _, entry := range pot.GetDomain().GetTranslations() {
+		written[potKey{id: entry.ID}] = true
+	}
 
-		if !found {
-			err = t.addToPotFile("", entry)
-			if err != nil {
-				fmt.Println(err)
-			}
+	for ctx, entries := range pot.GetDomain().GetCtxTranslations() {
+		for _, entry := range entries {
+			written[potKey{ctx: ctx, id: entry.ID}] = true
 		}
 	}
 
-	for ctx, uniqueKeys := range t.uniqueKeysCtx {
-		for key, entry := range uniqueKeys {
-			found := false
-			if _, ok := ctr[ctx]; ok {
-				for _, potKey := range ctr[ctx] {
-					if key == potKey.ID {
-						found = true
-						break
-					}
-				}
-			}
+	add := func(ctx string, entry uniqueKey) {
+		id := potKey{ctx: ctx, id: entry.singular}
+		if written[id] {
+			return
+		}
 
-			if !found {
-				err = t.addToPotFile(ctx, entry)
-				if err != nil {
-					fmt.Println(err)
-				}
-			}
+		written[id] = true
+
+		if err := t.addToPotFile(ctx, entry); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	for _, message := range catalog.Messages {
+		add(message.Context, t.recordedKey(message.Context, message.ID))
+	}
+
+	for _, key := range sortedKeys(t.uniqueKeys) {
+		add("", t.uniqueKeys[key])
+	}
+
+	for _, ctx := range sortedKeys(t.uniqueKeysCtx) {
+		for _, key := range sortedKeys(t.uniqueKeysCtx[ctx]) {
+			add(ctx, t.uniqueKeysCtx[ctx][key])
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
+// potKey identifies an entry of the POT file: its context and key.
+type potKey struct {
+	ctx string
+	id  string
+}
+
+// sortedKeys returns the keys of m in sorted order, an empty slice for an
+// empty map.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := slices.AppendSeq(make([]string, 0, len(m)), maps.Keys(m))
+	slices.Sort(keys)
+
+	return keys
+}
+
+// ScanFiles extracts the keys of the TemplateExtension files below root with
+// the extract package and remembers them, so CheckMissingTranslations can add
+// them to the POT file. A template that does not parse is an error naming the
+// file.
 func (t *Translator) ScanFiles(root string) error {
 	t.catalogueMu.Lock()
 	defer t.catalogueMu.Unlock()
 
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	_, err := t.scan(root)
+
+	return err
+}
+
+// scan extracts the keys of the template files below root and remembers
+// them. It must be called while catalogueMu is held for writing.
+func (t *Translator) scan(root string) (*extract.Catalog, error) {
+	var sources []extract.Source
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(path, TemplateExtension) {
-			err = t.scanFile(path)
-			if err != nil {
-				return err
-			}
+
+		if info.IsDir() || !strings.HasSuffix(path, TemplateExtension) {
+			return nil
 		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		sources = append(sources, extract.Source{Name: path, Text: string(data)})
+
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	catalog, err := extract.Extract(sources...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, message := range catalog.Messages {
+		t.remember(message.Context, uniqueKey{singular: message.ID, plural: message.Plural})
+	}
+
+	return catalog, nil
+}
+
+// recordedKey returns the recorded key, with its plural; a key without
+// plural when it is not recorded. It must be called while catalogueMu is
+// held.
+func (t *Translator) recordedKey(ctx, key string) uniqueKey {
+	recorded := t.uniqueKeys
+	if ctx != "" {
+		recorded = t.uniqueKeysCtx[ctx]
+	}
+
+	entry, exists := recorded[key]
+	if !exists {
+		return uniqueKey{singular: key}
+	}
+
+	return entry
 }
 
 // recordKey serializes discovery and POT updates for concurrent lookups.
+// An empty text is not recorded: msgid "" is the header of a POT file.
 func (t *Translator) recordKey(ctx string, entry uniqueKey) {
-	if !t.recordMissing.Load() {
+	if !t.recordMissing.Load() || entry.singular == "" {
 		return
 	}
 
@@ -246,23 +375,50 @@ func (t *Translator) recordKey(ctx string, entry uniqueKey) {
 	}
 	t.catalogueMu.RUnlock()
 
+	// A lookup has no error to return, so a recording error is logged.
+	if err := t.storeKey(ctx, entry); err != nil {
+		err = fmt.Errorf("go-translator: record %q: %w", entry.singular, err)
+		slog.Error("record missing translation", "error", err)
+	}
+}
+
+// storeKey appends entry to the POT file, unless it is there already, and
+// remembers it, under catalogueMu.
+func (t *Translator) storeKey(ctx string, entry uniqueKey) error {
 	t.catalogueMu.Lock()
 	defer t.catalogueMu.Unlock()
+
 	if t.hasRecordedKey(ctx, entry.singular) {
-		return
+		return nil
 	}
 
 	if err := t.addToPotFileIfNotExists(ctx, entry); err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
+
+	t.remember(ctx, entry)
+
+	return nil
+}
+
+// remember adds a key to the recorded keys. A key without plural keeps the
+// plural recorded earlier. It must be called while catalogueMu is held for
+// writing.
+func (t *Translator) remember(ctx string, entry uniqueKey) {
+	if entry.plural == "" {
+		entry.plural = t.recordedKey(ctx, entry.singular).plural
+	}
+
 	if ctx == "" {
 		t.uniqueKeys[entry.singular] = entry
+
 		return
 	}
+
 	if t.uniqueKeysCtx[ctx] == nil {
 		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
 	}
+
 	t.uniqueKeysCtx[ctx][entry.singular] = entry
 }
 
@@ -274,111 +430,6 @@ func (t *Translator) hasRecordedKey(ctx, key string) bool {
 	}
 	_, exists := t.uniqueKeysCtx[ctx][key]
 	return exists
-}
-
-func (t *Translator) scanFile(filename string) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-
-	trees := make(map[string]*parse.Tree)
-	tree := parse.New(filename)
-	// Extraction does not execute templates or require application helpers.
-	tree.Mode = parse.SkipFuncCheck
-	if _, err := tree.Parse(string(data), "{{", "}}", trees); err != nil {
-		return fmt.Errorf("scan translations in %s: %w", filename, err)
-	}
-	for _, tree := range trees {
-		t.scanTemplateNode(tree.Root)
-	}
-	return nil
-}
-
-func (t *Translator) scanTemplateNode(node parse.Node) {
-	switch node := node.(type) {
-	case *parse.ListNode:
-		if node != nil {
-			for _, child := range node.Nodes {
-				t.scanTemplateNode(child)
-			}
-		}
-	case *parse.ActionNode:
-		t.scanTemplateNode(node.Pipe)
-	case *parse.IfNode:
-		t.scanTemplateNode(node.Pipe)
-		t.scanTemplateNode(node.List)
-		t.scanTemplateNode(node.ElseList)
-	case *parse.RangeNode:
-		t.scanTemplateNode(node.Pipe)
-		t.scanTemplateNode(node.List)
-		t.scanTemplateNode(node.ElseList)
-	case *parse.WithNode:
-		t.scanTemplateNode(node.Pipe)
-		t.scanTemplateNode(node.List)
-		t.scanTemplateNode(node.ElseList)
-	case *parse.TemplateNode:
-		t.scanTemplateNode(node.Pipe)
-	case *parse.PipeNode:
-		if node != nil {
-			for _, cmd := range node.Cmds {
-				t.scanTemplateNode(cmd)
-			}
-		}
-	case *parse.CommandNode:
-		t.scanTranslationCommand(node)
-		for _, arg := range node.Args {
-			t.scanTemplateNode(arg)
-		}
-	}
-}
-
-func (t *Translator) scanTranslationCommand(cmd *parse.CommandNode) {
-	if len(cmd.Args) == 0 {
-		return
-	}
-	fn, ok := cmd.Args[0].(*parse.IdentifierNode)
-	if !ok {
-		return
-	}
-	count := map[string]int{"tl": 1, "tn": 2, "ctl": 2, "ctn": 3}[fn.Ident]
-	if count == 0 || len(cmd.Args) < count+2 {
-		return
-	}
-	args := make([]string, count)
-	for i := range args {
-		literal, ok := cmd.Args[i+2].(*parse.StringNode)
-		if !ok {
-			return // Dynamic keys are discovered by runtime translation calls.
-		}
-		args[i] = literal.Text
-	}
-	var ctx string
-	entry := uniqueKey{}
-	switch fn.Ident {
-	case "tl":
-		entry.singular = args[0]
-	case "tn":
-		entry.singular, entry.plural = args[0], args[1]
-	case "ctl":
-		ctx, entry.singular = args[0], args[1]
-	case "ctn":
-		ctx, entry.singular, entry.plural = args[0], args[1], args[2]
-	}
-	if ctx == "" {
-		if entry.plural == "" {
-			entry.plural = t.uniqueKeys[entry.singular].plural
-		}
-		t.uniqueKeys[entry.singular] = entry
-		return
-	}
-	if t.uniqueKeysCtx[ctx] == nil {
-		t.uniqueKeysCtx[ctx] = make(map[string]uniqueKey)
-	}
-	if entry.plural == "" {
-		entry.plural = t.uniqueKeysCtx[ctx][entry.singular].plural
-	}
-	t.uniqueKeysCtx[ctx][entry.singular] = entry
 }
 
 // ensurePotFile creates the POT file with a template header when it does not
@@ -441,22 +492,40 @@ func (t *Translator) addToPotFile(ctx string, entry uniqueKey) error {
 		return err
 	}
 
-	// Reload pot file contents
-	t.pot.ParseFile(filepath.Join(t.translationsDir, t.potFile))
+	// The next key to record reads the POT file again, with this entry.
+	t.pot = nil
 
 	return nil
 }
 
+// loadPot returns the keys of the POT file, reading it the first time they
+// are needed: to record a key or to extract keys from templates. A
+// translator that does neither, such as one with recording off, never reads
+// the file. A POT file that does not exist or cannot be read counts as
+// empty. It must be called while catalogueMu is held for writing.
+func (t *Translator) loadPot() *gotext.Po {
+	if t.pot != nil {
+		return t.pot
+	}
+
+	t.pot = gotext.NewPo()
+	t.pot.ParseFile(filepath.Join(t.translationsDir, t.potFile))
+
+	return t.pot
+}
+
 // addToPotFileIfNotExists must be called while catalogueMu is held.
 func (t *Translator) addToPotFileIfNotExists(ctx string, entry uniqueKey) error {
+	pot := t.loadPot()
+
 	if ctx == "" {
-		for _, existing := range t.pot.GetDomain().GetTranslations() {
+		for _, existing := range pot.GetDomain().GetTranslations() {
 			if existing.ID == entry.singular {
 				return nil
 			}
 		}
 	} else {
-		for _, existing := range t.pot.GetDomain().GetCtxTranslations()[ctx] {
+		for _, existing := range pot.GetDomain().GetCtxTranslations()[ctx] {
 			if existing.ID == entry.singular {
 				return nil
 			}
@@ -465,6 +534,8 @@ func (t *Translator) addToPotFileIfNotExists(ctx string, entry uniqueKey) error 
 	return t.addToPotFile(ctx, entry)
 }
 
+// FuncMap returns the template functions tl, tn, ctl and ctn. Each takes the
+// localizer first, like Tl, Tn, Ctl and Ctn.
 func (t *Translator) FuncMap() template.FuncMap {
 	return template.FuncMap{
 		"tl":  t.tl,
@@ -476,10 +547,16 @@ func (t *Translator) FuncMap() template.FuncMap {
 
 // removePrefix removes any prefix ending with prefix separator from the translated string.
 func (t *Translator) removePrefix(s string) string {
-	idx := strings.LastIndex(s, t.PrefixSeparator())
+	return removeSeparator(s, t.PrefixSeparator())
+}
+
+// removeSeparator removes everything up to and including the last separator
+// in s.
+func removeSeparator(s, separator string) string {
+	idx := strings.LastIndex(s, separator)
 	if idx != -1 {
-		// Remove everything up to and including the prefix separator
-		return s[idx+len(t.PrefixSeparator()):]
+		return s[idx+len(separator):]
 	}
+
 	return s
 }
