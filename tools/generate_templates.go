@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/donseba/go-translator"
+	"github.com/donseba/go-translator/v2"
 )
 
 func main() {

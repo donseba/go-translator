@@ -1,4 +1,4 @@
-module github.com/donseba/go-translator
+module github.com/donseba/go-translator/v2
 
 go 1.24
 

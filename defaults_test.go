@@ -239,3 +239,124 @@ msgstr[1] "berichten"
 		t.Fatal("merge rewrote the application's PO file")
 	}
 }
+
+// poHeader is a catalogue header in language with the given Plural-Forms.
+func poHeader(language, pluralForms string) string {
+	return `msgid ""
+msgstr ""
+"Language: ` + language + `\n"
+"Plural-Forms: ` + pluralForms + `\n"
+
+`
+}
+
+// pluralDefaults is a default catalogue with one plural message.
+func pluralDefaults(language, pluralForms string) fstest.MapFS {
+	return fstest.MapFS{"defaults.po": &fstest.MapFile{Data: []byte(poHeader(language, pluralForms) + `msgid "Yes"
+msgstr "Ja"
+
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] "%d bestand"
+msgstr[1] "%d bestanden"
+`)}}
+}
+
+// TestMergeDefaultsMatchesBaseLanguage checks that defaults merge into a
+// catalogue of the same base language, in both directions.
+func TestMergeDefaultsMatchesBaseLanguage(t *testing.T) {
+	for _, test := range []struct {
+		loaded   string
+		defaults string
+	}{
+		{"nl", "nl_NL"},
+		{"nl_NL", "nl"},
+		{"nl_NL", "nl_NL"},
+		{"nl_BE", "nl-NL"},
+	} {
+		forms := "nplurals=2; plural=(n != 1);"
+		tr := newTestTranslator(t, map[string]string{test.loaded + ".po": poHeader(test.loaded, forms)})
+
+		if err := tr.SetLanguage(test.loaded); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := tr.MergeDefaults(test.loaded, pluralDefaults(test.defaults, forms), "defaults.po"); err != nil {
+			t.Errorf("%s into %s: %v", test.defaults, test.loaded, err)
+			continue
+		}
+
+		if got := tr.Tn(mockLocalizer{locale: test.loaded}, "%d file", "%d files", 2, 2); got != "2 bestanden" {
+			t.Errorf("%s into %s: %q", test.defaults, test.loaded, got)
+		}
+	}
+
+	tr := newTestTranslator(t, map[string]string{"nl.po": poHeader("nl", "nplurals=2; plural=(n != 1);")})
+
+	if err := tr.SetLanguage("nl"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := tr.MergeDefaults("nl", pluralDefaults("de_DE", "nplurals=2; plural=(n != 1);"), "defaults.po")
+	if !errors.Is(err, ErrorInvalidCatalogue) {
+		t.Errorf("another language: %v", err)
+	}
+}
+
+// TestMergeDefaultsComparesPluralRules checks that plural rules are compared
+// by what they choose, not as text.
+func TestMergeDefaultsComparesPluralRules(t *testing.T) {
+	for _, test := range []struct {
+		loaded   string
+		defaults string
+		fits     bool
+	}{
+		{"nplurals=2; plural=(n != 1);", "nplurals=2; plural=n != 1;", true},
+		{"nplurals=2; plural=(n != 1);", "nplurals=2; plural=(n!=1)", true},
+		{"nplurals=2; plural=(n != 1);", "nplurals=2; plural=(n == 1 ? 0 : 1);", true},
+		{"nplurals=2; plural=(n != 1);", "nplurals=2; plural=(n > 1);", false},
+		{"nplurals=2; plural=(n != 1);", "nplurals=3; plural=(n != 1);", false},
+		{"nplurals=2; plural=(n != 1);", "nplurals=1; plural=0;", false},
+	} {
+		tr := newTestTranslator(t, map[string]string{"nl.po": poHeader("nl", test.loaded)})
+
+		if err := tr.SetLanguage("nl"); err != nil {
+			t.Fatal(err)
+		}
+
+		err := tr.MergeDefaults("nl", pluralDefaults("nl", test.defaults), "defaults.po")
+
+		if test.fits && err != nil {
+			t.Errorf("%q into %q: %v", test.defaults, test.loaded, err)
+		}
+
+		if !test.fits && !errors.Is(err, ErrorInvalidCatalogue) {
+			t.Errorf("%q into %q: %v, want a plural mismatch", test.defaults, test.loaded, err)
+		}
+	}
+}
+
+// TestMergeDefaultsIntoCatalogueWithoutLanguage checks that a catalogue
+// without a Language header takes defaults of the language it was loaded as,
+// also a second time.
+func TestMergeDefaultsIntoCatalogueWithoutLanguage(t *testing.T) {
+	tr := newTestTranslator(t, map[string]string{"nl.po": "msgid \"No\"\nmsgstr \"Nee\"\n"})
+
+	if err := tr.SetLanguage("nl"); err != nil {
+		t.Fatal(err)
+	}
+
+	forms := "nplurals=2; plural=(n != 1);"
+
+	for range 2 {
+		if err := tr.MergeDefaults("nl", pluralDefaults("nl_NL", forms), "defaults.po"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	loc := mockLocalizer{locale: "nl"}
+
+	if tr.Tl(loc, "Yes") != "Ja" || tr.Tl(loc, "No") != "Nee" {
+		t.Errorf("got %q and %q", tr.Tl(loc, "Yes"), tr.Tl(loc, "No"))
+	}
+}
