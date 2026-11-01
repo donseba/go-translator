@@ -6,6 +6,9 @@
 
 # go-translator
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/donseba/go-translator/v2.svg)](https://pkg.go.dev/github.com/donseba/go-translator/v2)
+[![codecov](https://codecov.io/gh/donseba/go-translator/graph/badge.svg)](https://codecov.io/gh/donseba/go-translator)
+
 [Documentation](https://docs.gowebthings.com/go-translator) · Part of [go-webthings](https://gowebthings.com/components).
 
 go-translator provides gettext PO catalogues, plural forms, translation contexts, and helpers for Go `html/template`. A small `Localizer` interface supplies the locale for each request, so the application controls locale selection.
